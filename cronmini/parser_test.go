@@ -262,11 +262,9 @@ func TestNamedValues(t *testing.T) {
 		t.Fatalf("failed to parse: %v", err)
 	}
 	spec := schedule.(*SpecSchedule)
-	if spec.Month != 1<<1|starBit { // January is month 1, plus wildcard for dow
-		// Actually month should be just 1<<1 since jan is specified, not *
-		if spec.Month&(1<<1) == 0 {
-			t.Errorf("expected January (bit 1) to be set in month field")
-		}
+	// Month should have bit 1 set for January (jan is specified, not *)
+	if spec.Month&(1<<1) == 0 {
+		t.Errorf("expected January (bit 1) to be set in month field")
 	}
 
 	// Test day names
