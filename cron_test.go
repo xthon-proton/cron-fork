@@ -700,3 +700,61 @@ func stop(cron *Cron) chan bool {
 func newWithSeconds() *Cron {
 	return New(WithParser(secondParser), WithChain())
 }
+
+// TestSameCronExpressionAllJobsRun verifies that when multiple jobs share the
+// same cron expression, all of them are executed. The execution order among
+// them is not guaranteed (Go's sort.Sort is unstable for equal Next times).
+func TestSameCronExpressionAllJobsRun(t *testing.T) {
+	var mu sync.Mutex
+	var runs []int
+
+	cron := newWithSeconds()
+	cron.AddFunc("* * * * * *", func() {
+		mu.Lock()
+		runs = append(runs, 1)
+		mu.Unlock()
+	})
+	cron.AddFunc("* * * * * *", func() {
+		mu.Lock()
+		runs = append(runs, 2)
+		mu.Unlock()
+	})
+	cron.Start()
+	defer cron.Stop()
+
+	time.Sleep(OneSecond)
+
+	mu.Lock()
+	count := len(runs)
+	mu.Unlock()
+
+	if count < 2 {
+		t.Errorf("expected both jobs with the same cron expression to run, but only %d ran", count)
+	}
+}
+
+// TestLongRunningJobDoesNotBlockNextExecution verifies that a long-running job
+// does not block the scheduler or prevent subsequent executions of the same job.
+// Each job runs in its own goroutine, so new executions are started on schedule
+// regardless of whether previous executions have completed.
+func TestLongRunningJobDoesNotBlockNextExecution(t *testing.T) {
+	var runs int64
+
+	cron := newWithSeconds()
+	// This job takes 3 seconds to complete, but it runs every second.
+	// Without a wrapper like DelayIfStillRunning or SkipIfStillRunning,
+	// the scheduler will start a new goroutine each second regardless.
+	cron.AddFunc("* * * * * *", func() {
+		atomic.AddInt64(&runs, 1)
+		time.Sleep(3 * time.Second)
+	})
+	cron.Start()
+	defer cron.Stop()
+
+	// Wait slightly over 2 seconds: at least 2 executions should have been started.
+	time.Sleep(2 * OneSecond)
+
+	if n := atomic.LoadInt64(&runs); n < 2 {
+		t.Errorf("expected at least 2 executions (long-running job should not block next execution), got %d", n)
+	}
+}

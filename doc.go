@@ -217,6 +217,25 @@ Activate it with a one-off logger as follows:
 			cron.VerbosePrintfLogger(log.New(os.Stdout, "cron: ", log.LstdFlags))))
 
 
+Scheduling Behavior
+
+When multiple jobs share the same cron expression (i.e. the same next activation
+time), they are all executed at that time. Because the internal sort used to order
+entries is not stable, the relative execution order among jobs with equal Next
+times is not guaranteed. All such jobs will run, but callers must not rely on a
+particular ordering between them.
+
+Each job is started in its own goroutine via go j.Run(), so a long-running job
+never blocks the scheduler or subsequent executions of the same (or any other)
+job. For example, if a job is scheduled to run every second but takes five
+seconds to complete, the scheduler will start new goroutine executions every
+second without waiting for prior executions to finish.
+
+To change this behavior for jobs that may overlap, use the provided JobWrappers:
+
+  - cron.DelayIfStillRunning: queues the next run until the current one finishes.
+  - cron.SkipIfStillRunning: drops the next run if the current one is still in progress.
+
 Implementation
 
 Cron entries are stored in an array, sorted by their next activation time.  Cron
